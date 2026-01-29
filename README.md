@@ -57,15 +57,15 @@ export TF_VAR_my_ip="YOUR_PUBLIC_IP/32"
 terraform apply
 
 ### 5️⃣ Access the Website
-http://<Elastic-IP>
+http://<<Elastic-IP>>
 
 ## 🧹 Cleanup
 To avoid AWS charges:
 terraform destroy
 
 📚 Skills Learned
-Designing AWS networking with Terraform
-Managing security groups and routing
-Automating server provisioning with user_data
+Designing AWS networking with Terraform \
+Managing security groups and routing \
+Automating server provisioning with user_data \
 Debugging cloud-init and connectivity issues
 
