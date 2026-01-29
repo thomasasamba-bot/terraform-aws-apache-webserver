@@ -7,136 +7,246 @@ terraform {
   }
 }
 
-# Configure the AWS Provider
-provider "aws" {
-  region = "us-east-1"
-  profile = "terraform"
-}
-
-# Terraform resource syntax example
-#resource "<provider>_resource_type" "resource_name" {
-#  # resource configuration parameters
-#  key = "value"
-#  key2 = "value2" 
-#}
-
-# 1. Create a VPC
-resource "aws_vpc" "prod-vpc" {
+# -------------------------------
+# 1️⃣ VPC
+# -------------------------------
+resource "aws_vpc" "prod_vpc" {
   cidr_block = "10.0.0.0/16"
-  
+
   tags = {
-    Name = "production"
+    Name = "production-vpc"
   }
 }
 
-# 2. Create an Internet Gateway
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.prod-vpc.id
+# -------------------------------
+# 2️⃣ Public Subnets (for ALB)
+# -------------------------------
+resource "aws_subnet" "public_subnet1" {
+  vpc_id            = aws_vpc.prod_vpc.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-east-1a"
+
+  tags = { Name = "public-subnet-az1" }
 }
 
-# 3. Create a custom route table
-resource "aws_route_table" "prod-route-table" {
-  vpc_id = aws_vpc.prod-vpc.id
+resource "aws_subnet" "public_subnet2" {
+  vpc_id            = aws_vpc.prod_vpc.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+
+  tags = { Name = "public-subnet-az2" }
+}
+
+# -------------------------------
+# 3️⃣ Private Subnets (for ASG instances)
+# -------------------------------
+resource "aws_subnet" "private_subnet1" {
+  vpc_id            = aws_vpc.prod_vpc.id
+  cidr_block        = "10.0.101.0/24"
+  availability_zone = "us-east-1a"
+
+  tags = { Name = "private-subnet-az1" }
+}
+
+resource "aws_subnet" "private_subnet2" {
+  vpc_id            = aws_vpc.prod_vpc.id
+  cidr_block        = "10.0.102.0/24"
+  availability_zone = "us-east-1b"
+
+  tags = { Name = "private-subnet-az2" }
+}
+
+# -------------------------------
+# 4️⃣ Internet Gateway & Route Table
+# -------------------------------
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.prod_vpc.id
+
+  tags = { Name = "prod-igw" }
+}
+
+resource "aws_route_table" "public_rt" {
+  vpc_id = aws_vpc.prod_vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
   }
 
-  tags = {
-    Name = "production-route-table"
-  }
+  tags = { Name = "public-rt" }
 }
 
-# 4. Create a public subnet
-resource "aws_subnet" "subnet1" {
-  vpc_id            = aws_vpc.prod-vpc.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-1a"
-  
-  tags = {
-    Name = "prod-subnet"
-  }
-  
+resource "aws_route_table_association" "public1_assoc" {
+  subnet_id      = aws_subnet.public_subnet1.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
-# 5. Associate the route table with the subnet
-resource "aws_route_table_association" "a" {
-  subnet_id      = aws_subnet.subnet1.id
-  route_table_id = aws_route_table.prod-route-table.id
+resource "aws_route_table_association" "public2_assoc" {
+  subnet_id      = aws_subnet.public_subnet2.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
-# 6. Create a security group to allow port 22, 80, and 443
-resource "aws_security_group" "allow_web" {
-  name        = "allow_web_traffic"
-  description = "Allow web inbound traffic and all outbound traffic"
-  vpc_id      = aws_vpc.prod-vpc.id
+# -------------------------------
+# 5️⃣ Security Groups
+# -------------------------------
+
+# ALB SG (HTTP/HTTPS)
+resource "aws_security_group" "alb_sg" {
+  name        = "alb-sg"
+  description = "Allow HTTP/HTTPS traffic from internet"
+  vpc_id      = aws_vpc.prod_vpc.id
 
   ingress {
-    description      = "Allow SSH"
-    from_port        = 22
-    to_port          = 22
-    protocol         = "tcp"
-    cidr_blocks      = ["41.90.162.115/32"] // Replace with your IP address
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    description      = "Allow HTTP"
+    description = "HTTPS"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "alb-sg" }
+}
+
+# ASG Instances SG (HTTP from ALB + SSH from admin IP)
+resource "aws_security_group" "asg_sg" {
+  name        = "asg-sg"
+  description = "Allow HTTP from ALB and SSH from admin IP"
+  vpc_id      = aws_vpc.prod_vpc.id
+
+  ingress {
+    description      = "HTTP from ALB"
     from_port        = 80
     to_port          = 80
     protocol         = "tcp"
-    cidr_blocks      = ["0.0.0.0/0"]
+    security_groups  = [aws_security_group.alb_sg.id]
   }
 
   ingress {
-    description      = "Allow HTTPS"
-    from_port        = 443
-    to_port          = 443
-    protocol         = "tcp"
-    cidr_blocks      = ["0.0.0.0/0"]
+    description = "SSH from admin"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["41.90.162.115/32"] # Replace with your IP
   }
+
   egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1" # semantically equivalent to all ports
-    cidr_blocks      = ["0.0.0.0/0"]
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "allow_web_traffic"
+  tags = { Name = "asg-sg" }
+}
+
+# -------------------------------
+# 6️⃣ Launch Template
+# -------------------------------
+resource "aws_launch_template" "nginx_lt" {
+  name_prefix   = "nginx-lt"
+  image_id      = "ami-0b6c6ebed2801a5cb"
+  instance_type = "t3.micro"
+  key_name      = "MyPythonAppKey"
+
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups             = [aws_security_group.asg_sg.id]
   }
-}
 
-# 8. Assign the Elastic IP to the EC2 instance
-resource "aws_eip" "web-server-eip" {
-  domain     = "vpc"
-  instance   = aws_instance.web-server-instance.id
-  depends_on = [aws_internet_gateway.igw]
-}
-
-# 9. Create Ubuntu server  and install/enable Apache
-resource "aws_instance" "web-server-instance" {
-  ami               = "ami-0b6c6ebed2801a5cb"
-  instance_type     = "t3.micro"
-  availability_zone = aws_subnet.subnet1.availability_zone
-  key_name          = "MyPythonAppKey"
-  
-  # Use the modern approach instead of deprecated network_interface block
-  subnet_id                   = aws_subnet.subnet1.id
-  vpc_security_group_ids      = [aws_security_group.allow_web.id]
-  private_ip                  = "10.0.1.10"
-  associate_public_ip_address = true
-
-  user_data = <<-EOF
+  user_data = base64encode(<<-EOF
     #!/bin/bash
-    sudo apt update -y
-    sudo apt install apache2 -y
-    sudo systemctl start apache2
-    sudo systemctl enable apache2
-    sudo bash -c 'echo "<h1>Hello from Terraform!</h1>" > /var/www/html/index.html'
+    apt update -y
+    apt install nginx -y
+    systemctl enable nginx
+    systemctl start nginx
+    echo "<h1>Hello from Terraform via NGINX ASG!</h1>" > /var/www/html/index.nginx-debian.html
   EOF
+  )
 
-  tags = {
-    Name = "web-server-instance"
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "nginx-asg-instance"
+    }
   }
 }
+
+# -------------------------------
+# 7️⃣ Application Load Balancer
+# -------------------------------
+resource "aws_lb" "app_lb" {
+  name               = "app-load-balancer"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = [aws_subnet.public_subnet1.id, aws_subnet.public_subnet2.id]
+
+  tags = { Name = "app-load-balancer" }
+}
+
+resource "aws_lb_target_group" "app_tg" {
+  name     = "app-target-group"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.prod_vpc.id
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+}
+
+resource "aws_lb_listener" "app_listener" {
+  load_balancer_arn = aws_lb.app_lb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_tg.arn
+  }
+}
+
+# -------------------------------
+# 8️⃣ Auto Scaling Group
+# -------------------------------
+resource "aws_autoscaling_group" "app_asg" {
+  desired_capacity    = 2
+  min_size            = 2
+  max_size            = 4
+  vpc_zone_identifier = [aws_subnet.private_subnet1.id, aws_subnet.private_subnet2.id]
+
+  launch_template {
+    id      = aws_launch_template.nginx_lt.id
+    version = "$Latest"
+  }
+
+  target_group_arns = [aws_lb_target_group.app_tg.arn]
+
+  tag {
+    key                 = "Name"
+    value               = "nginx-asg-instance"
+    propagate_at_launch = true
+  }
+}
+# End of main.tf

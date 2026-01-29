@@ -1,64 +1,77 @@
-# 🚀 Terraform AWS Apache Web Server (Production-Style Networking)
+# 🚀 Terraform AWS NGINX ASG + ALB Web Server
 
-This project provisions a fully functional Apache web server on AWS using **Terraform**.  
-It demonstrates real-world **Infrastructure as Code (IaC)** practices including custom networking, security configuration, and automated server provisioning.
+This project provisions a **scalable NGINX web server environment** on AWS using **Terraform**. 
+It demonstrates real-world **Infrastructure as Code (IaC)** practices including custom networking, security configuration, auto-scaling, load balancing and automated server provisioning without manual intervention.
 
 ---
 
-## 🏗️ Architecture Overview
+## 🏗️ Terraform driven Architecture Overview
 
-The infrastructure deployed includes:
+The infrastructure deployed via Terraform includes:
 
 - **Custom VPC** – 10.0.0.0/16
-- **Public Subnet** in a specific Availability Zone
-- **Internet Gateway** for public internet access
-- **Route Table** with default route to the internet
+- **Public Subnet** in multiple Availability Zones (for ALB)
+- **Private Subnet** in multiple Availability Zones (for ASG instances)
+- **Internet Gateway** for outbound traffic to the internet
+- **Route Table** for proper network routing
 - **Security Group** allowing:
-  - SSH (restricted to my IP)
-  - HTTP (80)
-  - HTTPS (443)
-- **EC2 Ubuntu Instance**
-- **Elastic IP** for consistent public access
-- **Apache Web Server** installed automatically using `user_data`
+  - ALB Security Group – allows HTTP (80) and HTTPS (443) from the internet
+  - ASG Instances Security Group – allows HTTP from ALB and SSH from admin IP
+- **Launch Template** to provision EC2 instances with NGINX
+- **Auto Scaling Group (ASG)** to manage EC2 instances
+- **Application Load Balancer (ALB)** to distribute traffic across ASG instances
+- **Target Group** for ALB to route traffic to ASG instances
 
+---
+## High-level Terraform Architecture Diagram:
+![Architecture Diagram](https://raw.githubusercontent.com/thomasasamba-bot/terraform-aws-apache-webserver/main/architecture-diagram.png)
+
+Everything above is fully defined and managed via Terraform, demonstrating IaC principles.
 ---
 
 ## 🌍 Result
 
-After deployment, the EC2 instance hosts a web page accessible via browser:
+Once deployed, Terraform provisions:
+- NGINX web server instances running in private subnets
+- Fully functional Application Load Balancer with public access
+- Auto Scaling to maintain desired instance count
+The page served displays:
 
 ```
-Hello from Terraform!
+Hello from Terraform via NGINX ASG!
 ```
 
-Terraform outputs the public IP to access the site.
+Terraform outputs the **ALB URL** for easy access
 
 ---
 
-## 🛠️ Technologies Used
+## 🛠️ Key Terraform Concepts Demonstrated
 
-| Tool | Purpose |
+| Concept | Description |
 |------|---------|
 | Terraform | Infrastructure as Code |
-| AWS EC2 | Virtual Server |
-| AWS VPC | Networking |
-| AWS Security Groups | Firewall Rules |
-| Apache2 | Web Server |
-| Cloud-init | Instance bootstrapping |
+| Providers | ProvidersConfigures AWS as the target cloud platform |
+| Resources | Defines VPC, subnets, EC2 instances, security groups, ALB, ASG |
+| Variables | Parameterizes inputs like SSH IP or instance types |
+| Outputs | Exposes ALB URL and other useful info |
+| User Data | Automates server setup (NGINX) on instance boot |
+| Modules | Infrastructure can be modularized for reuse |
+| Dependencies | Terraform ensures resources are created in the correct order |
 
 ---
 
 ## 📁 Project Structure
 
 ```
-terraform-aws-apache-webserver/
+terraform-aws-nginx-asg-alb/
 │
-├── main.tf          # Core infrastructure resources
+├── main.tf          # Core infrastructure resources (VPC, ALB, ASG, Launch Template)
 ├── variables.tf     # Input variables
 ├── provider.tf      # AWS provider configuration
-├── outputs.tf       # Output values (Elastic IP, URL)
+├── outputs.tf       # Output values (ALB URL, Subnet IDs, Security Group IDs)
 ├── README.md        # Project documentation
 └── .gitignore       # Files excluded from Git
+
 ```
 
 ---
@@ -67,8 +80,8 @@ terraform-aws-apache-webserver/
 
 ### 1️⃣ Clone Repository
 ```bash
-git clone https://github.com/thomasasamba-bot/terraform-aws-apache-webserver.git
-cd terraform-aws-apache-webserver
+git clone https://github.com/thomasasamba-bot/terraform-aws-nginx-asg-alb.git
+cd terraform-aws-nginx-asg-alb
 ```
 
 ### 2️⃣ Initialize Terraform
@@ -95,30 +108,31 @@ Type `yes` when prompted.
 
 ---
 
-## 🌐 Access the Web Server
+## 🌐 Access the NGINX Server
 
 After deployment, Terraform will output:
 
 ```
-website_url = http://<Elastic-IP>
+load_balancer_url = http://<ALB-DNS-NAME>
 ```
 
-Paste that into your browser to see the hosted page.
+Paste the URL into your browser to see the hosted NGINX page.
 
 ---
 
 ## 🔐 Security Notes
 
-- SSH access is restricted to a single IP address
-- Security group allows only necessary web traffic
+- SSH access is restricted to a single admin IP address
+- ALB handles public traffic; EC2 instances remain in private subnets
 - No credentials or private keys are stored in the repository
+- Infrastructure changes are fully managed by Terraform – no manual steps
 
 ---
 
-## 🧹 Destroy Infrastructure (Avoid Charges)
+## 🧹 Destroy Infrastructure - Cleanup (Avoid AWS Charges)
 
 ```bash
-terraform destroy
+terraform destroy --auto-approve
 ```
 
 ---
@@ -127,11 +141,11 @@ terraform destroy
 
 This project demonstrates ability to:
 
-- Design AWS networking from scratch
-- Configure secure access controls
-- Automate server setup using cloud-init
-- Manage infrastructure lifecycle with Terraform
-- Troubleshoot real-world cloud provisioning issues
+- Building **AWS infrastructure fully via Terraform**
+- Automating server setup using user_data
+- Implementing **Auto Scaling and Load Balancing**
+- Managing **networking and security** with Terraform resources
+- Following **IaC best practices** for reproducible deployments
 
 ---
 
